@@ -101,6 +101,11 @@ bool rob_check_space(ROB *rob)
 {
     // TODO: Return true if there is space to insert another instruction into
     //       the ROB, false otherwise.
+	if (rob->head_ptr == rob->tail_ptr && rob->entries[rob->tail_ptr].valid)
+	{
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -119,6 +124,17 @@ int rob_insert(ROB *rob, InstInfo inst)
     // TODO: Create an entry containing this instruction at the tail of the
     //       ROB. Set all the fields on the entry to their correct values.
     // TODO: Advance the tail pointer, wrapping around if needed.
+	if (!rob_check_space(rob))
+	{
+		return -1;
+	}
+	rob->entries[rob->tail_ptr].inst = inst;
+	rob->entries[rob->tail_ptr].valid = true;
+	rob->entries[rob->tail_ptr].exec = false; //TODO pretty sure this would be false but check nevertheless
+	rob->entries[rob->tail_ptr].ready = false; //TODO when should you do this
+	rob->tail_ptr = (rob->tail_ptr == 255) ? 0 : rob->tail_ptr + 1;
+	
+	return (rob->tail_ptr ? rob->tail_ptr - 1 : 255);
 }
 
 /**
@@ -138,6 +154,14 @@ void rob_mark_exec(ROB *rob, InstInfo inst)
     //       (Hint: Is there an easy way to tell at what index the given
     //       instruction is located in the ROB?)
     // TODO: Update that entry.
+	for (int i = 0; i < 256; i++)
+	{
+		if (rob->entries[i].valid && rob->entries[i].inst.inst_num == inst.inst_num)
+		{
+			rob->entries[i].exec = true;
+			break;
+		}
+	}
 }
 
 /**
@@ -158,6 +182,14 @@ void rob_mark_ready(ROB *rob, InstInfo inst)
     //       (Hint: Is there an easy way to tell at what index the given
     //       instruction is located in the ROB?)
     // TODO: Update that entry.
+	for (int i = 0; i < 256; i++)
+	{
+		if (rob->entries[i].valid && rob->entries[i].inst.inst_num == inst.inst_num)
+		{
+			rob->entries[i].ready = true;
+			break;
+		}
+	}
 }
 
 /**
@@ -176,6 +208,8 @@ bool rob_check_ready(ROB *rob, int tag)
 {
     // TODO: Return true if the instruction at this tag (ID/index) is valid and
     //       has its output ready (i.e., is ready to commit), false otherwise.
+	
+	return (rob->entries[tag].valid && rob->entries[tag].ready);
 }
 
 /**
@@ -192,6 +226,8 @@ bool rob_check_head(ROB *rob)
 {
     // TODO: Return true if the instruction at the head of the ROB is valid and
     //       ready to commit, false otherwise.
+	return (rob->entries[rob->head_ptr].ready && rob->entries[rob->head_ptr].valid); //TODO pretty sure you need to check and modify ready here
+	
 }
 
 /**
@@ -216,6 +252,22 @@ void rob_wakeup(ROB *rob, int tag)
 {
     // TODO: Update the relevant src1 ready bits throughout the ROB.
     // TODO: Update the relevant src2 ready bits throughout the ROB.
+	for (int i = 0; i < 256; i++)
+	{
+		if (rob->entries[i].valid)
+		{
+			if (rob->entries[i].inst.src1_tag == tag)
+			{
+				rob->entries[i].inst.src1_ready = true;
+			}
+			if (rob->entries[i].inst.src2_tag == tag)
+			{
+				rob->entries[i].inst.src2_ready = true;
+			}
+			
+			//TODO check if you need to do something if all srcs are ready
+		}
+	}
 }
 
 /**
@@ -233,4 +285,15 @@ InstInfo rob_remove_head(ROB *rob)
     // TODO: Remove that entry.
     // TODO: Advance the head pointer, wrapping around if needed.
     // TODO: Return the instruction in the removed entry.
+
+	if (rob->entries[rob->head_ptr].valid && rob->entries[rob->head_ptr].ready)
+	{
+		rob->entries[rob->head_ptr].valid = false;
+		rob->head_ptr = (rob->head_ptr == 255) ? 0 : rob->head_ptr + 1;
+		return (rob->head_ptr ? rob->entries[255].inst : rob->entries[rob->head_ptr - 1].inst);
+	}
+	else
+	{
+		return rob->entries[rob->head_ptr].inst; //TODO check if this suffices
+	}
 }

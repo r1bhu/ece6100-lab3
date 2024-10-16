@@ -68,6 +68,12 @@ int rat_get_remap(RAT *rat, int arf_id)
 {
     // TODO: Access the RAT entry at the correct index.
     // TODO: Return the PRF ID if the register is aliased or -1 otherwise.
+	if (rat->entries[arf_id].valid)
+	{
+		return rat->entries[arf_id].prf_id;
+	}
+	
+	return -1;
 }
 
 /**
@@ -87,6 +93,8 @@ void rat_set_remap(RAT *rat, int arf_id, int prf_id)
 {
     // TODO: Access the RAT entry at the correct index.
     // TODO: Set the correct values on that entry.
+	rat->entries[arf_id].valid = true;  //TODO see if you need to do checks or even sometimes ignore the call
+	rat->entries[arf_id].prf_id = prf_id;
 }
 
 /**
@@ -104,4 +112,5 @@ void rat_reset_entry(RAT *rat, int arf_id)
 {
     // TODO: Access the RAT entry at the correct index.
     // TODO: Make it invalid.
+	rat->entries[arf_id].valid = false;
 }
