@@ -473,7 +473,8 @@ void pipe_cycle_issue(Pipeline *p)
 					{
                         // There is a remapping
 
-                        p->rob->entries[idx].inst.src1_ready = false;// p->rob->entries[remapped].ready;
+                        //p->rob->entries[idx].inst.src1_ready = false;// p->rob->entries[remapped].ready;
+                        p->rob->entries[idx].inst.src1_ready = p->rob->entries[remapped].ready;
                         p->rob->entries[idx].inst.src1_tag = remapped;
 					}
                     else
@@ -495,7 +496,7 @@ void pipe_cycle_issue(Pipeline *p)
                     {
                         // There is a remapping
 
-                        p->rob->entries[idx].inst.src2_ready = false;// p->rob->entries[remapped].ready;
+                        p->rob->entries[idx].inst.src2_ready = p->rob->entries[remapped].ready;
                         p->rob->entries[idx].inst.src2_tag = remapped;
                     }
                     else
