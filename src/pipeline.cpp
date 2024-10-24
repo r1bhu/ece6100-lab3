@@ -532,7 +532,7 @@ void pipe_cycle_issue(Pipeline *p)
 			}
             else
             {
-                p->ID_latch[i].stall = true;
+                //p->ID_latch[i].stall = true;
             }
 		}
 		
