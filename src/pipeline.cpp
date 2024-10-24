@@ -146,7 +146,9 @@ void pipe_fetch_inst(Pipeline *p, PipelineLatch *fe_latch)
  */
 Pipeline *pipe_init(int trace_fd)
 {
+#ifdef DEBUG
     printf("\n** PIPELINE IS %d WIDE **\n\n", PIPE_WIDTH);
+#endif
 
     // Allocate pipeline.
     Pipeline *p = (Pipeline *)calloc(1, sizeof(Pipeline));
@@ -455,14 +457,23 @@ void pipe_cycle_issue(Pipeline *p)
 			{
 				int idx = rob_insert(p->rob, p->ID_latch[i].inst);				
 				
+#ifdef DEBUG
+                printf("Rob idx: %d\n", idx);
+#endif
+
 				if (p->rob->entries[idx].inst.src1_reg != -1)
 				{
 					int remapped = rat_get_remap(p->rat, p->rob->entries[idx].inst.src1_reg);
+
+#ifdef DEBUG
+                    printf("Remapped: %d\nCurrent", remapped);
+#endif
+
 					if (remapped != -1)
 					{
                         // There is a remapping
 
-						p->rob->entries[idx].inst.src1_ready = p->rob->entries[remapped].ready;
+                        p->rob->entries[idx].inst.src1_ready = false;// p->rob->entries[remapped].ready;
                         p->rob->entries[idx].inst.src1_tag = remapped;
 					}
                     else
@@ -484,7 +495,7 @@ void pipe_cycle_issue(Pipeline *p)
                     {
                         // There is a remapping
 
-                        p->rob->entries[idx].inst.src2_ready = p->rob->entries[remapped].ready;
+                        p->rob->entries[idx].inst.src2_ready = false;// p->rob->entries[remapped].ready;
                         p->rob->entries[idx].inst.src2_tag = remapped;
                     }
                     else
@@ -552,41 +563,70 @@ void pipe_cycle_schedule(Pipeline *p)
         // TODO: Otherwise, mark it as executing in the ROB and send it to the
         //       next latch.
         // TODO: Repeat for each lane of the pipeline.
-        for (uint j = 0; j < MAX_PIPE_WIDTH; j++)
+        for (uint j = 0; j < PIPE_WIDTH; j++)
         {
-            bool foundRdyToExec = false;
-            uint64_t oldestValidInst = 0; //TODO make sure signed doesnt reduce size too much compared to instrs
-            uint64_t oldestValidInstIdx = 0;
-            for (int i = 0; i < 256; i++) //TODO don't hardcode 256
+            //bool foundRdyToExec = false;
+            //uint64_t oldestValidInst = 0; //TODO make sure signed doesnt reduce size too much compared to instrs
+            //uint64_t oldestValidInstIdx = 0;
+
+            if (p->SC_latch[j].valid)
             {
-                if (p->rob->entries[i].valid && !p->rob->entries[i].exec && (p->rob->entries[i].inst.src1_ready && p->rob->entries[i].inst.src2_ready))
+                // Already in progress
+                continue;
+            }
+
+            for (uint i = p->rob->head_ptr; i < p->rob->head_ptr + NUM_ROB_ENTRIES; i++)
+            {
+                int idx = i % NUM_ROB_ENTRIES;
+                if (p->rob->entries[idx].valid && !p->rob->entries[idx].exec && (p->rob->entries[idx].inst.src1_ready && p->rob->entries[idx].inst.src2_ready))
                 {
-                    if (p->rob->entries[i].inst.inst_num >= oldestValidInst)
-                    {
-                        if (!foundRdyToExec)
-                        {
-                            // THis is the oldest
-                            oldestValidInst = p->rob->entries[i].inst.inst_num;
-                            oldestValidInstIdx = i;
-                            foundRdyToExec = true;
-                        }
-                        else
-                        {
-                            // Check who is older
-                            oldestValidInstIdx = (oldestValidInst < p->rob->entries[i].inst.inst_num) ? oldestValidInstIdx : i;
-                            oldestValidInst = (oldestValidInst < p->rob->entries[i].inst.inst_num) ? oldestValidInst : p->rob->entries[i].inst.inst_num;
-                        }
-                    }
+
+#ifdef DEBUG
+                    printf(" FOund an instr ready to be executed \n");
+#endif
+                    p->rob->entries[idx].exec = true;
+                    p->SC_latch[j].inst = p->rob->entries[idx].inst;
+                    p->SC_latch[j].valid = true;
+                    break;
+                }
+                else if (p->rob->entries[idx].valid && !p->rob->entries[idx].exec)
+                {
+                    // This means that the instruction wasn't executing because the operands were not available
+                    // Need to break to maintain in-order scheduling
+                    break;
                 }
             }
 
-            if (foundRdyToExec)
-            {
-                printf(" FOund an instr ready to be executed \n");
-                p->rob->entries[oldestValidInstIdx].exec = true;
-                p->SC_latch[j].inst = p->rob->entries[oldestValidInstIdx].inst;
-                p->SC_latch[j].valid = true;
-            }
+            //for (int i = 0; i < 256; i++) //TODO don't hardcode 256
+            //{
+            //    if (p->rob->entries[i].valid && !p->rob->entries[i].exec && (p->rob->entries[i].inst.src1_ready && p->rob->entries[i].inst.src2_ready))
+            //    {
+            //        if (p->rob->entries[i].inst.inst_num >= oldestValidInst)
+            //        {
+            //            if (!foundRdyToExec)
+            //            {
+            //                // THis is the oldest
+            //                oldestValidInst = p->rob->entries[i].inst.inst_num;
+            //                oldestValidInstIdx = i;
+            //                foundRdyToExec = true;
+            //            }
+            //            else
+            //            {
+            //                // Check who is older
+            //                oldestValidInstIdx = (oldestValidInst < p->rob->entries[i].inst.inst_num) ? oldestValidInstIdx : i;
+            //                oldestValidInst = (oldestValidInst < p->rob->entries[i].inst.inst_num) ? oldestValidInst : p->rob->entries[i].inst.inst_num;
+            //            }
+            //        }
+            //    }
+            //}
+
+            //if (foundRdyToExec)
+            //{
+            //    printf(" FOund an instr ready to be executed \n");
+            //    p->rob->entries[oldestValidInstIdx].exec = true;
+            //    p->SC_latch[j].inst = p->rob->entries[oldestValidInstIdx].inst;
+            //    p->SC_latch[j].valid = true;
+            //}
 
         }
     }
@@ -619,7 +659,7 @@ void pipe_cycle_writeback(Pipeline *p)
 
     // Remember: how many instructions can the EX stage send to the WB stage
     // in one cycle?
-    for (int i = 0; i < MAX_PIPE_WIDTH; i++)
+    for (uint i = 0; i < PIPE_WIDTH; i++)
     {
         if (p->EX_latch[i].valid)
         {
@@ -630,20 +670,37 @@ void pipe_cycle_writeback(Pipeline *p)
             if (p->rob->entries[robIdx].inst.dest_reg != -1)
             {
                 /* Broadcast as well */
-                for (int j = 0; j < 256; j++)
+
+                for (uint j = p->rob->head_ptr; j < p->rob->head_ptr + NUM_ROB_ENTRIES; j++)
                 {
-                    if (p->rob->entries[j].valid && p->rob->entries[j].inst.src1_reg == p->rob->entries[robIdx].inst.dest_reg)
+                    int idx = j % NUM_ROB_ENTRIES;
+
+                    if (p->rob->entries[idx].valid && p->rob->entries[idx].inst.src1_tag == robIdx)
                     {
-                        p->rob->entries[j].inst.src1_ready = true;
+                        p->rob->entries[idx].inst.src1_ready = true;
                     }
 
-                    if (p->rob->entries[j].valid && p->rob->entries[j].inst.src2_reg == p->rob->entries[robIdx].inst.dest_reg)
+                    if (p->rob->entries[idx].valid && p->rob->entries[idx].inst.src2_tag == robIdx)
                     {
-                        p->rob->entries[j].inst.src2_ready = true;
+                        p->rob->entries[idx].inst.src2_ready = true;
                     }
-
-                    p->rob->entries[j].ready = p->rob->entries[j].inst.src1_ready && p->rob->entries[j].inst.src2_ready;
                 }
+
+
+                //for (int j = 0; j < 256; j++)
+                //{
+                //    if (p->rob->entries[j].valid && p->rob->entries[j].inst.src1_tag == robIdx)
+                //    {
+                //        p->rob->entries[j].inst.src1_ready = true;
+                //    }
+
+                //    if (p->rob->entries[j].valid && p->rob->entries[j].inst.src2_tag == robIdx)
+                //    {
+                //        p->rob->entries[j].inst.src2_ready = true;
+                //    }
+
+                //    //p->rob->entries[j].ready = p->rob->entries[j].inst.src1_ready && p->rob->entries[j].inst.src2_ready;
+                //}
 
                 
             }

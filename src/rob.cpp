@@ -105,6 +105,10 @@ bool rob_check_space(ROB *rob)
 	{
 		return false;
 	}
+	/*else if (((rob->tail_ptr - rob->head_ptr) % MAX_ROB_ENTRIES) == (int)NUM_ROB_ENTRIES)
+	{
+		return false;
+	}*/
 	return true;
 }
 
@@ -132,9 +136,10 @@ int rob_insert(ROB *rob, InstInfo inst)
 	rob->entries[rob->tail_ptr].valid = true;
 	rob->entries[rob->tail_ptr].exec = false; //TODO pretty sure this would be false but check nevertheless
 	rob->entries[rob->tail_ptr].ready = false; //TODO when should you do this
-	rob->tail_ptr = (rob->tail_ptr == 255) ? 0 : rob->tail_ptr + 1;
+	//rob->tail_ptr = (rob->tail_ptr == 255) ? 0 : rob->tail_ptr + 1;
+	rob->tail_ptr = (rob->tail_ptr + 1) % NUM_ROB_ENTRIES;
 	
-	return (rob->tail_ptr ? rob->tail_ptr - 1 : 255);
+	return (rob->tail_ptr ? rob->tail_ptr - 1 : NUM_ROB_ENTRIES - 1);
 }
 
 /**
@@ -289,8 +294,11 @@ InstInfo rob_remove_head(ROB *rob)
 	if (rob->entries[rob->head_ptr].valid && rob->entries[rob->head_ptr].ready)
 	{
 		rob->entries[rob->head_ptr].valid = false;
-		rob->head_ptr = (rob->head_ptr == 255) ? 0 : rob->head_ptr + 1;
-		return (rob->head_ptr ? rob->entries[255].inst : rob->entries[rob->head_ptr - 1].inst);
+		rob->head_ptr = (rob->head_ptr + 1) % NUM_ROB_ENTRIES;
+
+		return (rob->entries[(rob->head_ptr - 1) % NUM_ROB_ENTRIES].inst);
+
+		//return (rob->head_ptr ? rob->entries[255].inst : rob->entries[rob->head_ptr - 1].inst);
 	}
 	else
 	{
