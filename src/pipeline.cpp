@@ -449,9 +449,12 @@ void pipe_cycle_issue(Pipeline *p)
     // TODO: Set the tag for this instruction's destination register.
     // TODO: If this instruction writes to a register, update the RAT
     //       accordingly.
+
+    bool firstStageStuck = false;
+
 	for (uint i = 0; i < PIPE_WIDTH; i++)
 	{
-		if (p->ID_latch[i].valid)
+		if (p->ID_latch[i].valid && !firstStageStuck)
 		{
 			if (rob_check_space(p->rob))
 			{
@@ -528,11 +531,20 @@ void pipe_cycle_issue(Pipeline *p)
                 //p->rob->entries[idx].ready = p->rob->entries[idx].inst.src1_ready && p->rob->entries[idx].inst.src2_ready;
 
                 p->ID_latch[i].valid = false;
+
+                if (i == 0)
+                {
+                    firstStageStuck = false;
+                }
 				
 			}
             else
             {
                 //p->ID_latch[i].stall = true;
+                if (i == 0)
+                {
+                    firstStageStuck = true;
+                }
             }
 		}
 		
@@ -604,36 +616,7 @@ void pipe_cycle_schedule(Pipeline *p)
                 }
             }
 
-            //for (int i = 0; i < 256; i++) //TODO don't hardcode 256
-            //{
-            //    if (p->rob->entries[i].valid && !p->rob->entries[i].exec && (p->rob->entries[i].inst.src1_ready && p->rob->entries[i].inst.src2_ready))
-            //    {
-            //        if (p->rob->entries[i].inst.inst_num >= oldestValidInst)
-            //        {
-            //            if (!foundRdyToExec)
-            //            {
-            //                // THis is the oldest
-            //                oldestValidInst = p->rob->entries[i].inst.inst_num;
-            //                oldestValidInstIdx = i;
-            //                foundRdyToExec = true;
-            //            }
-            //            else
-            //            {
-            //                // Check who is older
-            //                oldestValidInstIdx = (oldestValidInst < p->rob->entries[i].inst.inst_num) ? oldestValidInstIdx : i;
-            //                oldestValidInst = (oldestValidInst < p->rob->entries[i].inst.inst_num) ? oldestValidInst : p->rob->entries[i].inst.inst_num;
-            //            }
-            //        }
-            //    }
-            //}
-
-            //if (foundRdyToExec)
-            //{
-            //    printf(" FOund an instr ready to be executed \n");
-            //    p->rob->entries[oldestValidInstIdx].exec = true;
-            //    p->SC_latch[j].inst = p->rob->entries[oldestValidInstIdx].inst;
-            //    p->SC_latch[j].valid = true;
-            //}
+            
 
         }
     }
@@ -739,23 +722,32 @@ void pipe_cycle_commit(Pipeline *p)
     // TODO: If a RAT mapping exists and is still relevant, update the RAT.
     // TODO: Repeat for each lane of the pipeline.
 
-    if (p->rob->entries[p->rob->head_ptr].ready)
+    while (1)
     {
-        // Update RAT only if there is a dr in the first place
-        int id = rat_get_remap(p->rat, p->rob->entries[p->rob->head_ptr].inst.dest_reg);
-
-        if (id == p->rob->head_ptr && id != -1)
+        if (p->rob->entries[p->rob->head_ptr].valid && p->rob->entries[p->rob->head_ptr].ready)
         {
-            // Now you know that it hasn't been remapped again. Update RAT
-            rat_reset_entry(p->rat, p->rob->entries[p->rob->head_ptr].inst.dest_reg);
+            // Update RAT only if there is a dr in the first place
+            int id = rat_get_remap(p->rat, p->rob->entries[p->rob->head_ptr].inst.dest_reg);
+
+            if (id == p->rob->head_ptr && id != -1)
+            {
+                // Now you know that it hasn't been remapped again. Update RAT
+                rat_reset_entry(p->rat, p->rob->entries[p->rob->head_ptr].inst.dest_reg);
+            }
+
+            pipe_commit_inst(p, p->rob->entries[p->rob->head_ptr].inst);
+
+            // Make invalid and update headPtr
+            rob_remove_head(p->rob);
+
+        }
+        else
+        {
+            break;
         }
 
-        pipe_commit_inst(p, p->rob->entries[p->rob->head_ptr].inst);
-            
-        // Make invalid and update headPtr
-        rob_remove_head(p->rob);
-
     }
+    
 
     return;
 
