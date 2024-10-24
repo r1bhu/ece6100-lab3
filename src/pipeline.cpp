@@ -498,12 +498,14 @@ void pipe_cycle_issue(Pipeline *p)
                     p->rob->entries[idx].inst.src2_ready = true;
                 }
 
+                // Set tag
+                p->rob->entries[idx].inst.dr_tag = idx;
+
                 if (p->rob->entries[idx].inst.dest_reg != -1)
                 {
                     // Dest reg present
 
-                    // Set tag
-                    p->rob->entries[idx].inst.dr_tag = idx;
+                    
 
                     // Update RAT
                     rat_set_remap(p->rat, p->rob->entries[idx].inst.dest_reg, idx);
