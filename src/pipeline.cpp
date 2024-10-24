@@ -722,7 +722,7 @@ void pipe_cycle_commit(Pipeline *p)
     // TODO: If a RAT mapping exists and is still relevant, update the RAT.
     // TODO: Repeat for each lane of the pipeline.
 
-    while (1)
+    for  (uint i = 0; i < PIPE_WIDTH; i++)
     {
         if (p->rob->entries[p->rob->head_ptr].valid && p->rob->entries[p->rob->head_ptr].ready)
         {
