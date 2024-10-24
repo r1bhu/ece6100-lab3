@@ -452,6 +452,20 @@ void pipe_cycle_issue(Pipeline *p)
 
     bool firstStageStuck = false;
 
+    // Sort the ID stage
+    if (PIPE_WIDTH == 2)
+    {
+        if (p->ID_latch[0].valid && p->ID_latch[1].valid)
+        {
+            if (p->ID_latch[0].inst.inst_num > p->ID_latch[1].inst.inst_num)
+            {
+                PipelineLatch tempLatch = p->ID_latch[1];
+                p->ID_latch[1] = p->ID_latch[0];
+                p->ID_latch[0] = tempLatch;
+            }
+        }
+    }
+
 	for (uint i = 0; i < PIPE_WIDTH; i++)
 	{
 		if (p->ID_latch[i].valid && !firstStageStuck)
