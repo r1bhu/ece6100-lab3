@@ -354,7 +354,7 @@ void pipe_cycle_decode(Pipeline *p)
             for (unsigned int j = 0; j < PIPE_WIDTH; j++)
             {
                 if (p->FE_latch[j].valid &&
-                    p->FE_latch[j].inst.inst_num == next_inst_num)
+                    p->FE_latch[j].inst.inst_num == next_inst_num) //TODO --- when would this not hold true??????????
                 {
                     p->ID_latch[i] = p->FE_latch[j];
                     p->FE_latch[j].valid = false;
@@ -447,6 +447,83 @@ void pipe_cycle_issue(Pipeline *p)
     // TODO: Set the tag for this instruction's destination register.
     // TODO: If this instruction writes to a register, update the RAT
     //       accordingly.
+	for (uint i = 0; i < PIPE_WIDTH; i++)
+	{
+		if (p->ID_latch[i].valid)
+		{
+			if (rob_check_space(p->rob))
+			{
+				int idx = rob_insert(p->rob, p->ID_latch[i].inst);				
+				
+				if (p->rob->entries[idx].inst.src1_reg != -1)
+				{
+					int remapped = rat_get_remap(p->rat, p->rob->entries[idx].inst.src1_reg);
+					if (remapped != -1)
+					{
+                        // There is a remapping
+
+						p->rob->entries[idx].inst.src1_ready = p->rob->entries[remapped].ready;
+                        p->rob->entries[idx].inst.src1_tag = remapped;
+					}
+                    else
+                    {
+                        // No remapping, mark ready
+
+                        p->rob->entries[idx].inst.src1_ready = true;
+                    }
+				}
+                else
+                {
+                    p->rob->entries[idx].inst.src1_ready = true;
+                }
+
+                if (p->rob->entries[idx].inst.src2_reg != -1)
+                {
+                    int remapped = rat_get_remap(p->rat, p->rob->entries[idx].inst.src2_reg);
+                    if (remapped != -1)
+                    {
+                        // There is a remapping
+
+                        p->rob->entries[idx].inst.src2_ready = p->rob->entries[remapped].ready;
+                        p->rob->entries[idx].inst.src2_tag = remapped;
+                    }
+                    else
+                    {
+                        // No remapping, mark ready
+                        p->rob->entries[idx].inst.src2_ready = true;
+                    }
+                }
+                else
+                {
+                    p->rob->entries[idx].inst.src2_ready = true;
+                }
+
+                if (p->rob->entries[idx].inst.dest_reg != -1)
+                {
+                    // Dest reg present
+
+                    // Set tag
+                    p->rob->entries[idx].inst.dr_tag = idx;
+
+                    // Update RAT
+                    rat_set_remap(p->rat, p->rob->entries[idx].inst.dest_reg, idx);
+
+                    // What about other instructions that were waiting? Will they read RAT anytime soon?
+                }
+
+                //p->rob->entries[idx].ready = p->rob->entries[idx].inst.src1_ready && p->rob->entries[idx].inst.src2_ready;
+
+                p->ID_latch[i].valid = false;
+				
+			}
+            else
+            {
+                p->ID_latch[i].stall = true;
+            }
+		}
+		
+	}
+	
 }
 
 /**
@@ -473,6 +550,43 @@ void pipe_cycle_schedule(Pipeline *p)
         // TODO: Otherwise, mark it as executing in the ROB and send it to the
         //       next latch.
         // TODO: Repeat for each lane of the pipeline.
+        for (uint j = 0; j < MAX_PIPE_WIDTH; j++)
+        {
+            bool foundRdyToExec = false;
+            uint64_t oldestValidInst = 0; //TODO make sure signed doesnt reduce size too much compared to instrs
+            uint64_t oldestValidInstIdx = 0;
+            for (int i = 0; i < 256; i++) //TODO don't hardcode 256
+            {
+                if (p->rob->entries[i].valid && !p->rob->entries[i].exec && (p->rob->entries[i].inst.src1_ready && p->rob->entries[i].inst.src2_ready))
+                {
+                    if (p->rob->entries[i].inst.inst_num >= oldestValidInst)
+                    {
+                        if (!foundRdyToExec)
+                        {
+                            // THis is the oldest
+                            oldestValidInst = p->rob->entries[i].inst.inst_num;
+                            oldestValidInstIdx = i;
+                            foundRdyToExec = true;
+                        }
+                        else
+                        {
+                            // Check who is older
+                            oldestValidInstIdx = (oldestValidInst < p->rob->entries[i].inst.inst_num) ? oldestValidInstIdx : i;
+                            oldestValidInst = (oldestValidInst < p->rob->entries[i].inst.inst_num) ? oldestValidInst : p->rob->entries[i].inst.inst_num;
+                        }
+                    }
+                }
+            }
+
+            if (foundRdyToExec)
+            {
+                printf(" FOund an instr ready to be executed \n");
+                p->rob->entries[oldestValidInstIdx].exec = true;
+                p->SC_latch[j].inst = p->rob->entries[oldestValidInstIdx].inst;
+                p->SC_latch[j].valid = true;
+            }
+
+        }
     }
 
     if (SCHED_POLICY == SCHED_OUT_OF_ORDER)
@@ -503,6 +617,42 @@ void pipe_cycle_writeback(Pipeline *p)
 
     // Remember: how many instructions can the EX stage send to the WB stage
     // in one cycle?
+    for (int i = 0; i < MAX_PIPE_WIDTH; i++)
+    {
+        if (p->EX_latch[i].valid)
+        {
+            /* Update the ROB entry and mark it as ready to commit */
+            int robIdx = p->EX_latch[i].inst.dr_tag;
+            p->rob->entries[robIdx].ready = true;
+
+            if (p->rob->entries[robIdx].inst.dest_reg != -1)
+            {
+                /* Broadcast as well */
+                for (int j = 0; j < 256; j++)
+                {
+                    if (p->rob->entries[j].valid && p->rob->entries[j].inst.src1_reg == p->rob->entries[robIdx].inst.dest_reg)
+                    {
+                        p->rob->entries[j].inst.src1_ready = true;
+                    }
+
+                    if (p->rob->entries[j].valid && p->rob->entries[j].inst.src2_reg == p->rob->entries[robIdx].inst.dest_reg)
+                    {
+                        p->rob->entries[j].inst.src2_ready = true;
+                    }
+
+                    p->rob->entries[j].ready = p->rob->entries[j].inst.src1_ready && p->rob->entries[j].inst.src2_ready;
+                }
+
+                
+            }
+
+            /* Invalidate entry */
+            p->EX_latch[i].valid = false;
+
+            break; // Can only update one at a time
+        }
+    }
+
 }
 
 /**
@@ -523,15 +673,24 @@ void pipe_cycle_commit(Pipeline *p)
     // TODO: If a RAT mapping exists and is still relevant, update the RAT.
     // TODO: Repeat for each lane of the pipeline.
 
-    // The following code is DUMMY CODE to ensure that the base code compiles
-    // and that the simulation terminates. Replace it with a correct
-    // implementation!
-    for (unsigned int i = 0; i < PIPE_WIDTH; i++)
+    if (p->rob->entries[p->rob->head_ptr].ready)
     {
-        if (p->FE_latch[i].valid)
+        // Update RAT only if there is a dr in the first place
+        int id = rat_get_remap(p->rat, p->rob->entries[p->rob->head_ptr].inst.dest_reg);
+
+        if (id == p->rob->head_ptr && id != -1)
         {
-            pipe_commit_inst(p, p->FE_latch[i].inst);
-            p->FE_latch[i].valid = false;
+            // Now you know that it hasn't been remapped again. Update RAT
+            rat_reset_entry(p->rat, p->rob->entries[p->rob->head_ptr].inst.dest_reg);
         }
+
+        pipe_commit_inst(p, p->rob->entries[p->rob->head_ptr].inst);
+            
+        // Make invalid and update headPtr
+        rob_remove_head(p->rob);
+
     }
+
+    return;
+
 }
