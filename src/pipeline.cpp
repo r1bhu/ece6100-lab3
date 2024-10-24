@@ -553,7 +553,7 @@ void pipe_cycle_schedule(Pipeline *p)
 {
     // TODO: Implement two scheduling policies:
 
-    if (SCHED_POLICY == SCHED_IN_ORDER)
+    if (1 || SCHED_POLICY == SCHED_IN_ORDER)
     {
         // In-order scheduling:
         // TODO: Find the oldest valid entry in the ROB that is not already
@@ -592,9 +592,15 @@ void pipe_cycle_schedule(Pipeline *p)
                 }
                 else if (p->rob->entries[idx].valid && !p->rob->entries[idx].exec)
                 {
-                    // This means that the instruction wasn't executing because the operands were not available
-                    // Need to break to maintain in-order scheduling
-                    break;
+                    if (SCHED_IN_ORDER == SCHED_POLICY)
+                    {
+                        // This means that the instruction wasn't executing because the operands were not available
+                        // Need to break to maintain in-order scheduling
+                        break;
+                    }
+                    else if (SCHED_OUT_OF_ORDER == SCHED_POLICY)
+                    { }
+                    
                 }
             }
 
