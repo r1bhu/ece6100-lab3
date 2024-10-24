@@ -660,7 +660,7 @@ void pipe_cycle_writeback(Pipeline *p)
 
     // Remember: how many instructions can the EX stage send to the WB stage
     // in one cycle?
-    for (uint i = 0; i < PIPE_WIDTH; i++)
+    for (uint i = 0; i < MAX_WRITEBACKS; i++)
     {
         if (p->EX_latch[i].valid)
         {
@@ -709,7 +709,7 @@ void pipe_cycle_writeback(Pipeline *p)
             /* Invalidate entry */
             p->EX_latch[i].valid = false;
 
-            break; // Can only update one at a time
+            //break; // Can only update one at a time
         }
     }
 
